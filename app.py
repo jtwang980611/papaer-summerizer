@@ -266,8 +266,8 @@ class PaperSummarizerApp:
     def create_interface(self):
         """创建Gradio界面"""
 
-        # 自定义CSS
-        custom_css = """
+        # 自定义CSS - 保存为实例变量供launch()使用
+        self.custom_css = """
         .gradio-container {
             font-family: 'Microsoft YaHei', sans-serif;
         }
@@ -278,7 +278,7 @@ class PaperSummarizerApp:
         }
         """
 
-        with gr.Blocks(css=custom_css, title="PDF论文总结工具") as app:
+        with gr.Blocks(title="PDF论文总结工具") as app:
             gr.Markdown(
                 """
                 # 📚 PDF论文总结工具
@@ -458,9 +458,10 @@ def main():
         # 增加连接稳定性配置
         max_threads=10,  # 最大并发线程
         quiet=False,  # 显示日志便于调试
-        show_api=False,  # 不显示API文档
         # 允许跨域（如果需要通过反向代理访问）
-        allowed_paths=["/app/summaries"]
+        allowed_paths=["/app/summaries"],
+        # Gradio 6.0: css参数已移至launch()
+        css=app_instance.custom_css
     )
 
 
