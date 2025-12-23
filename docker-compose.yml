@@ -1,9 +1,6 @@
 services:
   paper-summarizer:
-    # 使用本地构建，不依赖远程镜像
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/jtwang980611/paper-summerizer:latest
     container_name: paper-summarizer
     ports:
       - "18860:7860"
