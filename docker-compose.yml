@@ -7,8 +7,8 @@ services:
     volumes:
       # 挂载输出目录（持久化生成的摘要）
       - ./summaries:/app/summaries
-      # 使用命名卷持久化config.json
-      - config-data:/app/data
+      # 挂载配置目录（持久化API配置）
+      - ./data:/app/data
     environment:
       # 从.env文件读取API配置（可选，作为默认值）
       - API_KEY=${API_KEY:-}
@@ -38,5 +38,3 @@ networks:
   paper-network:
     driver: bridge
 
-volumes:
-  config-data:
