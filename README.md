@@ -12,113 +12,72 @@
 - 🌐 **API兼容**: 支持所有兼容OpenAI格式的API（通过new_api等转换工具）
 - 📝 **Markdown输出**: 自动生成格式化的Markdown文件
 
-## 📦 安装部署
+## 🚀 快速开始
 
-> 💡 **快速部署**：
-> - 📘 GitHub 部署：查看 [GitHub 上传和部署指南](docs/GITHUB_GUIDE.md)
-> - 🐳 Docker 本地：查看 [Docker 部署指南](docs/DOCKER.md)
+### Docker 一键部署（推荐）
+
+```bash
+docker run -d -p 7860:7860 --name paper-summerizer ghcr.io/jtwang980611/paper-summerizer:latest
+```
+
+访问 `http://localhost:7860`，在 Web 界面中配置 API 密钥即可使用。
+
+---
+
+## 📦 其他部署方式
+
+> 💡 **部署指南**：
+>
+> - 🐳 Docker 详细配置：查看 [Docker 部署指南](docs/DOCKER.md)
 > - 🚀 服务器部署：查看 [服务器部署指南](docs/SERVER_DEPLOYMENT.md)
+> - 📘 GitHub 部署：查看 [GitHub 上传和部署指南](docs/GITHUB_GUIDE.md)
 
-### 1. 克隆或下载项目
+### 方式一：Docker Compose
 
 ```bash
 git clone https://github.com/jtwang980611/paper-summerizer.git
 cd paper-summerizer
-```
-
-### 2. 创建虚拟环境（推荐）
-
-**Windows:**
-```bash
-python -m venv venv
-venv\Scripts\activate
-```
-
-**Linux/Mac:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### 3. 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. 配置API密钥
-
-**方法一：使用环境变量**
-
-复制 `.env.example` 到 `.env` 并填入你的API密钥：
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env` 文件：
-
-```env
-OPENAI_API_KEY=sk-your-api-key-here
-```
-
-**方法二：使用配置文件**
-
-复制 `config/config.example.json` 到 `config.json` 并填入配置：
-
-```bash
-cp config/config.example.json config.json
-```
-
-**方法三：在Web界面中配置**
-
-直接在启动后的Web界面中输入API密钥和配置。
-
-## 🚀 使用方法
-
-### 方式一：Docker 部署（最简单）
-
-使用 Docker Compose 一键启动：
-
-```bash
 docker-compose up -d
 ```
 
 访问 `http://localhost:18860`
-
-详细说明查看：[Docker 部署指南](docs/DOCKER.md)
 
 ### 方式二：Web界面（本地运行）
 
 1. 启动Web应用：
 
 **Windows:**
+
 ```bash
 scripts\run.bat
 ```
+
 或直接运行：
+
 ```bash
 python app.py
 ```
 
 **Linux/Mac:**
+
 ```bash
 bash scripts/run.sh
 ```
+
 或直接运行：
+
 ```bash
 python app.py
 ```
 
 2. 在浏览器中打开 `http://localhost:18860`
-
 3. 在界面中：
+
    - 选择API提供商（OpenAI / Gemini / Claude / 自定义）
    - 输入API密钥和配置
    - 上传PDF文件（可多选）
    - 自定义Prompt（可选）
    - 点击"开始总结"按钮
-
 4. 查看结果并下载生成的Markdown文件
 
 ### 方式三：命令行
@@ -192,6 +151,7 @@ paper-summerizer/
 支持多种AI提供商，在Web界面中选择提供商后，系统会自动提示相应的配置：
 
 1. **OpenAI**
+
    ```json
    {
      "provider": "OpenAI",
@@ -200,8 +160,8 @@ paper-summerizer/
      "model": "gpt-3.5-turbo"
    }
    ```
-
 2. **Gemini（通过new_api）**
+
    ```json
    {
      "provider": "Gemini",
@@ -210,8 +170,8 @@ paper-summerizer/
      "model": "gemini-pro"
    }
    ```
-
 3. **Claude（通过new_api）**
+
    ```json
    {
      "provider": "Claude",
@@ -220,8 +180,8 @@ paper-summerizer/
      "model": "claude-3-sonnet"
    }
    ```
-
 4. **自定义API**
+
    - 支持任何兼容OpenAI格式的API
    - 在界面中选择"自定义"并填入相应配置
 
@@ -277,14 +237,15 @@ Prompt模板必须包含 `{content}` 占位符，例如：
 ## ⚠️ 注意事项
 
 1. **API密钥安全**:
+
    - 不要将包含真实API密钥的配置文件提交到Git
    - 已在 `.gitignore` 中排除 `config.json` 和 `.env`
-
 2. **PDF文件限制**:
+
    - 仅支持文本型PDF，不支持纯图片扫描版
    - 建议单个文件不超过50页
-
 3. **网络要求**:
+
    - 需要稳定的网络连接访问OpenAI API
    - 如遇连接问题，请检查代理设置
 
@@ -293,6 +254,7 @@ Prompt模板必须包含 `{content}` 占位符，例如：
 **Q: 如何使用代理？**
 
 A: 设置环境变量：
+
 ```bash
 export HTTP_PROXY=http://proxy.example.com:8080
 export HTTPS_PROXY=http://proxy.example.com:8080
@@ -301,6 +263,7 @@ export HTTPS_PROXY=http://proxy.example.com:8080
 **Q: 如何更换模型？**
 
 A: 在配置中修改 `model` 字段，支持的模型包括：
+
 - gpt-3.5-turbo (更快、更便宜)
 - gpt-4 (更强大、更准确)
 - 其他兼容模型
@@ -308,6 +271,7 @@ A: 在配置中修改 `model` 字段，支持的模型包括：
 **Q: 总结质量不满意怎么办？**
 
 A: 尝试：
+
 1. 调整Prompt模板，提供更详细的要求
 2. 使用更强大的模型（如GPT-4）
 3. 增加temperature参数以获得更多样化的输出
@@ -315,6 +279,7 @@ A: 尝试：
 **Q: 如何处理大量论文？**
 
 A: 建议分批处理，每批10-20篇，避免：
+
 - API rate limit
 - 网络超时
 - 费用过高
