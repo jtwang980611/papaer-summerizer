@@ -12,8 +12,7 @@
       "Bash(echo:*)",
       "Bash(done)",
       "Bash(git remote:*)",
-      "Bash(git push:*)",
-      "Bash(docker buildx build:*)"
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
