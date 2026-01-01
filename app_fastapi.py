@@ -89,45 +89,14 @@ async def index():
     return load_html_template()
 
 
-def load_prompt_names() -> dict:
-    """从 prompts/names.json 加载显示名称，如果不存在则使用文件名"""
-    names_file = Path(PROMPTS_DIR) / "names.json"
-    if names_file.exists():
-        try:
-            with open(names_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            pass
-    return {}
-
-
-def save_prompt_names(names: dict):
-    """保存显示名称到 names.json"""
-    names_file = Path(PROMPTS_DIR) / "names.json"
-    with open(names_file, 'w', encoding='utf-8') as f:
-        json.dump(names, f, indent=2, ensure_ascii=False)
-
-
 @app.get("/api/prompts")
 async def get_prompts():
     """获取所有预设prompt模板"""
     presets = load_prompt_presets()
-    saved_names = load_prompt_names()
-
-    # 为每个预设生成显示名称
-    preset_names = {}
-    for key in sorted(presets.keys()):
-        if key in saved_names:
-            preset_names[key] = saved_names[key]
-        else:
-            preset_names[key] = key  # 使用文件名作为默认名称
-
     # 确定默认预设
-    default_key = list(presets.keys())[0] if presets else None
-
+    default_key = sorted(presets.keys())[0] if presets else None
     return {
         'presets': presets,
-        'names': preset_names,
         'default': default_key
     }
 
@@ -137,19 +106,9 @@ async def save_prompt(name: str, request: Request):
     """保存prompt模板到文件"""
     data = await request.json()
     content = data.get('content', '')
-    display_name = data.get('display_name', '')
-
-    # 保存prompt内容
     prompt_file = Path(PROMPTS_DIR) / f"{name}.txt"
     with open(prompt_file, 'w', encoding='utf-8') as f:
         f.write(content)
-
-    # 保存显示名称
-    if display_name:
-        names = load_prompt_names()
-        names[name] = display_name
-        save_prompt_names(names)
-
     return {"success": True}
 
 
@@ -159,13 +118,6 @@ async def delete_prompt(name: str):
     prompt_file = Path(PROMPTS_DIR) / f"{name}.txt"
     if prompt_file.exists():
         prompt_file.unlink()
-
-        # 同时删除名称
-        names = load_prompt_names()
-        if name in names:
-            del names[name]
-            save_prompt_names(names)
-
         return {"success": True}
     return JSONResponse({"success": False, "message": "文件不存在"}, status_code=404)
 

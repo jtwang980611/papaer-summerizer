@@ -188,8 +188,7 @@
     <script>
         // 预设Prompt模板（从API加载）
         let promptPresets = {};
-        let presetNames = {};
-        let defaultPreset = 'accounting';
+        let defaultPreset = '';
         let defaultPrompt = '';
 
         // 加载预设prompts
@@ -198,33 +197,22 @@
                 const resp = await fetch('/api/prompts');
                 const data = await resp.json();
                 promptPresets = data.presets || {};
-                presetNames = data.names || {};
-                defaultPreset = data.default || 'accounting';
+                defaultPreset = data.default || '';
                 defaultPrompt = promptPresets[defaultPreset] || '';
 
                 // 动态生成下拉选项
                 const select = document.getElementById('prompt_preset');
                 select.innerHTML = '';
 
-                // 按名称排序添加预设选项
-                const sortedKeys = Object.keys(presetNames).sort((a, b) =>
-                    presetNames[a].localeCompare(presetNames[b])
-                );
+                // 按文件名排序
+                const sortedKeys = Object.keys(promptPresets).sort();
 
                 for (const key of sortedKeys) {
-                    if (promptPresets[key]) {
-                        const option = document.createElement('option');
-                        option.value = key;
-                        option.textContent = presetNames[key];
-                        select.appendChild(option);
-                    }
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = key;  // 直接用文件名
+                    select.appendChild(option);
                 }
-
-                // 添加自定义选项
-                const customOption = document.createElement('option');
-                customOption.value = 'custom';
-                customOption.textContent = '自定义';
-                select.appendChild(customOption);
 
             } catch (e) {
                 console.error('加载预设prompts失败', e);
@@ -323,10 +311,7 @@
                 const resp = await fetch(`/api/prompts/${preset}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        content: content,
-                        display_name: presetNames[preset] || preset
-                    })
+                    body: JSON.stringify({ content: content })
                 });
                 if (resp.ok) {
                     promptPresets[preset] = content;
@@ -341,23 +326,19 @@
 
         // 显示新建模板对话框
         function showNewPromptDialog() {
-            const name = prompt('请输入模板名称（英文，如 economics）：');
+            const name = prompt('请输入模板名称（如 economics）：');
             if (!name) return;
-
-            const displayName = prompt('请输入显示名称（如 "经济学论文"）：', name);
-            if (!displayName) return;
 
             // 添加到列表
             const select = document.getElementById('prompt_preset');
             const option = document.createElement('option');
             option.value = name;
-            option.textContent = displayName;
-            select.insertBefore(option, select.lastElementChild);
+            option.textContent = name;
+            select.appendChild(option);
             select.value = name;
 
             // 更新数据
             promptPresets[name] = '';
-            presetNames[name] = displayName;
 
             // 清空编辑区
             document.getElementById('prompt').value = '';
@@ -368,7 +349,7 @@
         async function deleteCurrentPrompt() {
             const preset = document.getElementById('prompt_preset').value;
 
-            if (!confirm(`确定要删除模板 "${presetNames[preset] || preset}" 吗？`)) {
+            if (!confirm(`确定要删除模板 "${preset}" 吗？`)) {
                 return;
             }
 
@@ -377,11 +358,7 @@
                     method: 'DELETE'
                 });
                 if (resp.ok) {
-                    // 从列表中移除
                     delete promptPresets[preset];
-                    delete presetNames[preset];
-
-                    // 重新加载
                     await loadPrompts();
                     applyPreset();
                     showStatus('prompt-status', '✅ 模板已删除', 'success');
