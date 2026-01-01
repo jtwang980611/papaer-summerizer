@@ -6,11 +6,12 @@
 
 - 📄 **批量处理**: 支持同时处理多个PDF文件
 - 🤖 **多AI支持**: 支持 OpenAI、Gemini、Claude 等多种AI API
-- 🎨 **可视化界面**: 基于Gradio的友好Web界面，支持API提供商切换
+- 🎨 **轻量Web界面**: 基于FastAPI的低内存占用Web界面（~100MB vs Gradio的~2GB）
 - 🔧 **自定义Prompt**: 灵活定制总结的格式和内容
 - 💾 **配置保存**: 支持保存API配置、提供商选择和Prompt模板
 - 🌐 **API兼容**: 支持所有兼容OpenAI格式的API（通过new_api等转换工具）
 - 📝 **Markdown输出**: 自动生成格式化的Markdown文件
+- 🐳 **多平台支持**: Docker镜像支持 amd64 和 arm64 架构
 
 ## 🚀 快速开始
 
@@ -42,43 +43,17 @@ docker-compose up -d
 
 访问 `http://localhost:18860`
 
-### 方式二：Web界面（本地运行）
-
-1. 启动Web应用：
-
-**Windows:**
+### 方式二：本地运行
 
 ```bash
-scripts\run.bat
+# 安装依赖
+pip install -r requirements.txt
+
+# 启动应用
+python app_fastapi.py
 ```
 
-或直接运行：
-
-```bash
-python app.py
-```
-
-**Linux/Mac:**
-
-```bash
-bash scripts/run.sh
-```
-
-或直接运行：
-
-```bash
-python app.py
-```
-
-2. 在浏览器中打开 `http://localhost:18860`
-3. 在界面中：
-
-   - 选择API提供商（OpenAI / Gemini / Claude / 自定义）
-   - 输入API密钥和配置
-   - 上传PDF文件（可多选）
-   - 自定义Prompt（可选）
-   - 点击"开始总结"按钮
-4. 查看结果并下载生成的Markdown文件
+访问 `http://localhost:7860`
 
 ### 方式三：命令行
 
@@ -114,15 +89,17 @@ python paper_summarizer.py \
 ```
 paper-summerizer/
 ├── README.md                 # 项目说明文档
-├── app.py                    # Gradio Web应用（主入口）
+├── app_fastapi.py            # FastAPI Web应用（主入口）
 ├── paper_summarizer.py       # 核心处理逻辑
 ├── requirements.txt          # Python依赖
 ├── .gitignore               # Git忽略规则
-├── config.json              # 运行时配置（自动生成，已忽略）
 │
 ├── 🐳 Dockerfile             # Docker镜像配置
 ├── 🐳 docker-compose.yml     # Docker Compose配置
 ├── 🐳 .dockerignore          # Docker忽略规则
+│
+├── .github/workflows/        # GitHub Actions
+│   └── docker-publish.yml   # 多平台镜像构建
 │
 ├── docs/                     # 📁 文档目录
 │   ├── QUICKSTART.md        # 快速开始指南
@@ -131,17 +108,12 @@ paper-summerizer/
 │   ├── SERVER_DEPLOYMENT.md # 服务器部署指南
 │   └── CLAUDE.md            # Claude Code 使用说明
 │
-├── scripts/                  # 📁 启动脚本目录
-│   ├── run.bat              # Windows启动脚本
-│   ├── run.sh               # Linux/Mac启动脚本
-│   └── run.ps1              # PowerShell启动脚本
-│
 ├── config/                   # 📁 配置文件目录
 │   ├── config.example.json  # 配置文件示例
 │   └── prompt_template.txt  # Prompt模板示例
 │
 ├── summaries/                # 📁 生成的摘要目录（Docker挂载）
-└── venv/                     # 虚拟环境（已忽略）
+└── data/                     # 📁 配置数据目录
 ```
 
 ## 🔧 配置说明
@@ -203,7 +175,7 @@ Prompt模板必须包含 `{content}` 占位符，例如：
 ## 💡 使用提示
 
 1. **PDF质量**: 确保PDF文件是可提取文本的（非扫描版）
-2. **文件大小**: 大文件会被截取前8000字符以避免超出token限制
+2. **文件大小**: 大文件会被截取前16000字符以避免超出token限制
 3. **API费用**: 使用前请了解API的计费规则
 4. **批量处理**: 建议每次处理10篇以内的论文
 5. **错误处理**: 单个文件失败不会影响其他文件的处理
@@ -246,7 +218,7 @@ Prompt模板必须包含 `{content}` 占位符，例如：
    - 建议单个文件不超过50页
 3. **网络要求**:
 
-   - 需要稳定的网络连接访问OpenAI API
+   - 需要稳定的网络连接访问API
    - 如遇连接问题，请检查代理设置
 
 ## 🛠️ 常见问题
@@ -266,6 +238,7 @@ A: 在配置中修改 `model` 字段，支持的模型包括：
 
 - gpt-3.5-turbo (更快、更便宜)
 - gpt-4 (更强大、更准确)
+- gemini-2.5-flash (Gemini)
 - 其他兼容模型
 
 **Q: 总结质量不满意怎么办？**

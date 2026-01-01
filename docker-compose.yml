@@ -15,22 +15,19 @@ services:
       - BASE_URL=${BASE_URL:-}
       - MODEL=${MODEL:-gemini-2.5-flash}
       - TZ=Asia/Shanghai
-      # Gradio 配置优化
-      - GRADIO_SERVER_NAME=0.0.0.0
-      - GRADIO_SERVER_PORT=7860
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:7860', timeout=5)"]
-      interval: 60s  # 增加间隔，减少健康检查频率
-      timeout: 15s  # 增加超时时间
-      retries: 5  # 增加重试次数
-      start_period: 30s  # 给应用更多启动时间
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 300s  # 5分钟检查一次，减少资源消耗
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
-          memory: 2G  # 限制最大内存
+          memory: 1G  # 降低内存限制
         reservations:
-          memory: 512M  # 保留最小内存
+          memory: 256M
     networks:
       - paper-network
 
