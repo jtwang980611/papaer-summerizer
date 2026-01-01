@@ -9,6 +9,10 @@ services:
       - ./summaries:/app/summaries
       # 挂载配置目录（持久化API配置）
       - ./data:/app/data
+      # 挂载Prompt模板目录（可自定义模板）
+      - ./prompts:/app/prompts
+      # 挂载HTML模板目录（可自定义界面）
+      - ./templates:/app/templates
     environment:
       # 从.env文件读取API配置（可选，作为默认值）
       - API_KEY=${API_KEY:-}

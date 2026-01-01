@@ -17,8 +17,38 @@ app = FastAPI(title="PDF论文总结工具")
 Path("data").mkdir(exist_ok=True)
 Path("summaries").mkdir(exist_ok=True)
 Path("temp").mkdir(exist_ok=True)
+Path("prompts").mkdir(exist_ok=True)
+Path("templates").mkdir(exist_ok=True)
 
 CONFIG_FILE = "data/config.json"
+PROMPTS_DIR = "prompts"
+TEMPLATES_DIR = "templates"
+
+
+def load_html_template() -> str:
+    """从文件加载HTML模板"""
+    template_file = Path(TEMPLATES_DIR) / "index.html"
+    if template_file.exists():
+        with open(template_file, 'r', encoding='utf-8') as f:
+            return f.read()
+    return "<h1>模板文件不存在</h1><p>请确保 templates/index.html 文件存在</p>"
+
+
+def load_prompt_presets() -> dict:
+    """从文件加载所有预设prompt模板"""
+    presets = {}
+    prompts_path = Path(PROMPTS_DIR)
+
+    if prompts_path.exists():
+        for file in prompts_path.glob("*.txt"):
+            name = file.stem  # 文件名不含扩展名
+            try:
+                with open(file, 'r', encoding='utf-8') as f:
+                    presets[name] = f.read()
+            except Exception as e:
+                print(f"加载prompt文件失败 {file}: {e}")
+
+    return presets
 
 
 def load_config() -> dict:
@@ -45,391 +75,99 @@ def save_config(config: dict):
 
 
 def get_default_prompt():
-    """默认prompt"""
-    return """设定角色： 会计与金融领域资深实证研究员。
-任务： 对提供的学术论文进行深度解析，并严格按照以下结构输出。所有提及本文或文中引用的参考文献处，必须严格使用 作者 (年份) 格式。
-
-## 1. 研究问题 (Research Question)
-定义研究的科学问题及其在会计/金融理论中的定位。
-
-## 2. 理论逻辑与假设 (Theory & Hypotheses)
-阐述核心理论模型（如 Schumpeter (1934) 的创新理论、Jensen and Meckling (1976) 的代理理论等）及推导出的可检验假设。
-
-## 3. 实证设计 (Research Design)
-- **样本构建：** 样本区间、数据库来源（如 WRDS, CSMAR, Wind）、样本筛选标准。
-- **关键变量：** 核心自变量 (X)、因变量 (Y) 的具体度量指标（Measures）及计算公式。
-- **识别策略：** 采用的模型（如 DID, RDD, FE）及内生性处理方法（如 IV, PSM, Heckman）。
-
-## 4. 核心发现 (Key Results)
-总结主回归结果（系数方向、显著性、经济显著性）以及关键的稳健性检验结论。
-
-## 5. 机制检验与异质性 (Mechanism & Heterogeneity)
-- **路径分析：** 说明 X 影响 Y 的具体中介路径或调节效应。
-- **分组差异：** 哪些样本组（如高 vs 低融资约束）效应更显著。
-
-## 6. 学术贡献 (Academic Contribution)
-归纳该研究对既有文献的边际改进，或在特定制度背景下的新发现。
-
-## 7. 研究局限与启发 (Limitations & Future Research)
-识别识别策略或变量定义上的局限，并思考其对后续研究的启发。
-
-论文内容：
-{content}"""
-
-
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF论文总结工具</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-            line-height: 1.6;
-        }
-        .container { max-width: 1200px; margin: 0 auto; }
-        h1 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
-        .card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .card h3 { margin-bottom: 15px; color: #34495e; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: 500; color: #555; }
-        input, select, textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        textarea { resize: vertical; min-height: 150px; }
-        .row { display: flex; gap: 20px; flex-wrap: wrap; }
-        .col { flex: 1; min-width: 300px; }
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s;
-        }
-        .btn-primary { background: #3498db; color: white; }
-        .btn-primary:hover { background: #2980b9; }
-        .btn-primary:disabled { background: #95a5a6; cursor: not-allowed; }
-        .btn-secondary { background: #95a5a6; color: white; }
-        .btn-secondary:hover { background: #7f8c8d; }
-        .status {
-            padding: 10px;
-            border-radius: 4px;
-            margin-top: 10px;
-            display: none;
-        }
-        .status.show { display: block; }
-        .status.success { background: #d4edda; color: #155724; }
-        .status.error { background: #f8d7da; color: #721c24; }
-        .status.info { background: #cce5ff; color: #004085; }
-        .result {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 4px;
-            white-space: pre-wrap;
-            font-family: monospace;
-            max-height: 600px;
-            overflow-y: auto;
-        }
-        .progress { display: none; margin-top: 10px; }
-        .progress.show { display: block; }
-        .progress-bar {
-            height: 20px;
-            background: #e9ecef;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            background: #3498db;
-            transition: width 0.3s;
-        }
-        .file-list { margin: 10px 0; }
-        .file-item {
-            padding: 5px 10px;
-            background: #e9ecef;
-            border-radius: 4px;
-            margin: 5px 0;
-            display: inline-block;
-        }
-        .download-link {
-            display: inline-block;
-            margin-top: 10px;
-            padding: 10px 20px;
-            background: #27ae60;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-        }
-        .download-link:hover { background: #219a52; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📚 PDF论文总结工具</h1>
-
-        <div class="row">
-            <div class="col">
-                <div class="card">
-                    <h3>⚙️ API配置</h3>
-                    <div class="form-group">
-                        <label>API提供商</label>
-                        <select id="provider">
-                            <option value="OpenAI">OpenAI</option>
-                            <option value="Gemini" selected>Gemini</option>
-                            <option value="Claude">Claude</option>
-                            <option value="自定义">自定义</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>API密钥</label>
-                        <input type="password" id="api_key" placeholder="输入API密钥">
-                    </div>
-                    <div class="form-group">
-                        <label>API基础URL</label>
-                        <input type="text" id="base_url" placeholder="例如: https://your-api-url/v1">
-                    </div>
-                    <div class="form-group">
-                        <label>模型名称</label>
-                        <input type="text" id="model" value="gemini-2.5-flash" placeholder="模型名称">
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="save_config" checked> 自动保存配置
-                        </label>
-                    </div>
-                    <button class="btn btn-secondary" onclick="saveConfig()">💾 保存配置</button>
-                    <div id="config-status" class="status"></div>
-                </div>
-
-                <div class="card">
-                    <h3>📝 自定义Prompt</h3>
-                    <div class="form-group">
-                        <textarea id="prompt" placeholder="使用 {content} 作为论文内容占位符"></textarea>
-                    </div>
-                    <button class="btn btn-secondary" onclick="resetPrompt()">🔄 恢复默认</button>
-                </div>
-            </div>
-
-            <div class="col">
-                <div class="card">
-                    <h3>📂 上传PDF文件</h3>
-                    <div class="form-group">
-                        <input type="file" id="files" multiple accept=".pdf">
-                    </div>
-                    <div id="file-list" class="file-list"></div>
-                    <button class="btn btn-primary" id="submit-btn" onclick="processPapers()">🚀 开始总结</button>
-
-                    <div id="progress" class="progress">
-                        <p id="progress-text">处理中...</p>
-                        <div class="progress-bar">
-                            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
-                        </div>
-                    </div>
-
-                    <div id="status" class="status"></div>
-                </div>
-
-                <div class="card">
-                    <h3>📄 总结结果</h3>
-                    <div id="result" class="result">等待处理...</div>
-                    <div id="download-container"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const defaultPrompt = `设定角色： 会计与金融领域资深实证研究员。
-任务： 对提供的学术论文进行深度解析，并严格按照以下结构输出。
-
-## 1. 研究问题 (Research Question)
-定义研究的科学问题及其在会计/金融理论中的定位。
-
-## 2. 理论逻辑与假设 (Theory & Hypotheses)
-阐述核心理论模型及推导出的可检验假设。
-
-## 3. 实证设计 (Research Design)
-- **样本构建：** 样本区间、数据库来源、样本筛选标准。
-- **关键变量：** 核心自变量 (X)、因变量 (Y) 的具体度量指标。
-- **识别策略：** 采用的模型及内生性处理方法。
-
-## 4. 核心发现 (Key Results)
-总结主回归结果以及关键的稳健性检验结论。
-
-## 5. 机制检验与异质性 (Mechanism & Heterogeneity)
-- **路径分析：** 说明 X 影响 Y 的具体中介路径或调节效应。
-- **分组差异：** 哪些样本组效应更显著。
-
-## 6. 学术贡献 (Academic Contribution)
-归纳该研究对既有文献的边际改进。
-
-## 7. 研究局限与启发 (Limitations & Future Research)
-识别研究局限，并思考其对后续研究的启发。
-
-论文内容：
-{content}`;
-
-        // 加载配置
-        async function loadConfig() {
-            try {
-                const resp = await fetch('/api/config');
-                const config = await resp.json();
-                document.getElementById('provider').value = config.provider || 'Gemini';
-                document.getElementById('api_key').value = config.api_key || '';
-                document.getElementById('base_url').value = config.base_url || '';
-                document.getElementById('model').value = config.model || 'gemini-2.5-flash';
-                document.getElementById('prompt').value = config.prompt || defaultPrompt;
-            } catch (e) {
-                console.error('加载配置失败', e);
-            }
-        }
-
-        // 保存配置
-        async function saveConfig() {
-            const config = {
-                provider: document.getElementById('provider').value,
-                api_key: document.getElementById('api_key').value,
-                base_url: document.getElementById('base_url').value,
-                model: document.getElementById('model').value,
-                prompt: document.getElementById('prompt').value
-            };
-
-            try {
-                const resp = await fetch('/api/config', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(config)
-                });
-                showStatus('config-status', '✅ 配置已保存', 'success');
-            } catch (e) {
-                showStatus('config-status', '❌ 保存失败', 'error');
-            }
-        }
-
-        // 重置prompt
-        function resetPrompt() {
-            document.getElementById('prompt').value = defaultPrompt;
-        }
-
-        // 显示状态
-        function showStatus(id, msg, type) {
-            const el = document.getElementById(id);
-            el.textContent = msg;
-            el.className = 'status show ' + type;
-            setTimeout(() => el.className = 'status', 3000);
-        }
-
-        // 文件选择显示
-        document.getElementById('files').addEventListener('change', function() {
-            const list = document.getElementById('file-list');
-            list.innerHTML = '';
-            for (const file of this.files) {
-                const item = document.createElement('span');
-                item.className = 'file-item';
-                item.textContent = file.name;
-                list.appendChild(item);
-            }
-        });
-
-        // 处理论文
-        async function processPapers() {
-            const files = document.getElementById('files').files;
-            if (files.length === 0) {
-                showStatus('status', '❌ 请选择PDF文件', 'error');
-                return;
-            }
-
-            const apiKey = document.getElementById('api_key').value;
-            if (!apiKey) {
-                showStatus('status', '❌ 请输入API密钥', 'error');
-                return;
-            }
-
-            // 禁用按钮
-            const btn = document.getElementById('submit-btn');
-            btn.disabled = true;
-            btn.textContent = '处理中...';
-
-            // 显示进度
-            document.getElementById('progress').className = 'progress show';
-            document.getElementById('result').textContent = '正在处理...';
-            document.getElementById('download-container').innerHTML = '';
-
-            // 保存配置
-            if (document.getElementById('save_config').checked) {
-                await saveConfig();
-            }
-
-            // 构建表单数据
-            const formData = new FormData();
-            for (const file of files) {
-                formData.append('files', file);
-            }
-            formData.append('provider', document.getElementById('provider').value);
-            formData.append('api_key', apiKey);
-            formData.append('base_url', document.getElementById('base_url').value);
-            formData.append('model', document.getElementById('model').value);
-            formData.append('prompt', document.getElementById('prompt').value);
-
-            try {
-                const resp = await fetch('/api/summarize', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const result = await resp.json();
-
-                if (result.success) {
-                    document.getElementById('result').textContent = result.markdown;
-                    showStatus('status', result.message, 'success');
-
-                    if (result.file) {
-                        document.getElementById('download-container').innerHTML =
-                            `<a class="download-link" href="/download/${result.file}">📥 下载Markdown文件</a>`;
-                    }
-                } else {
-                    showStatus('status', '❌ ' + result.message, 'error');
-                    document.getElementById('result').textContent = '处理失败: ' + result.message;
-                }
-            } catch (e) {
-                showStatus('status', '❌ 请求失败: ' + e.message, 'error');
-                document.getElementById('result').textContent = '请求失败';
-            }
-
-            // 恢复按钮
-            btn.disabled = false;
-            btn.textContent = '🚀 开始总结';
-            document.getElementById('progress').className = 'progress';
-        }
-
-        // 页面加载时加载配置
-        loadConfig();
-    </script>
-</body>
-</html>
-"""
+    """获取默认prompt（从文件加载第一个，或返回空）"""
+    presets = load_prompt_presets()
+    if presets:
+        # 返回第一个预设
+        return list(presets.values())[0]
+    return "请总结以下论文内容：\n\n{content}"
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
     """主页"""
-    return HTML_TEMPLATE
+    return load_html_template()
+
+
+def load_prompt_names() -> dict:
+    """从 prompts/names.json 加载显示名称，如果不存在则使用文件名"""
+    names_file = Path(PROMPTS_DIR) / "names.json"
+    if names_file.exists():
+        try:
+            with open(names_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {}
+
+
+def save_prompt_names(names: dict):
+    """保存显示名称到 names.json"""
+    names_file = Path(PROMPTS_DIR) / "names.json"
+    with open(names_file, 'w', encoding='utf-8') as f:
+        json.dump(names, f, indent=2, ensure_ascii=False)
+
+
+@app.get("/api/prompts")
+async def get_prompts():
+    """获取所有预设prompt模板"""
+    presets = load_prompt_presets()
+    saved_names = load_prompt_names()
+
+    # 为每个预设生成显示名称
+    preset_names = {}
+    for i, key in enumerate(sorted(presets.keys()), 1):
+        if key in saved_names:
+            preset_names[key] = saved_names[key]
+        else:
+            preset_names[key] = f"{i}. {key}"
+
+    # 确定默认预设
+    default_key = list(presets.keys())[0] if presets else None
+
+    return {
+        'presets': presets,
+        'names': preset_names,
+        'default': default_key
+    }
+
+
+@app.post("/api/prompts/{name}")
+async def save_prompt(name: str, request: Request):
+    """保存prompt模板到文件"""
+    data = await request.json()
+    content = data.get('content', '')
+    display_name = data.get('display_name', '')
+
+    # 保存prompt内容
+    prompt_file = Path(PROMPTS_DIR) / f"{name}.txt"
+    with open(prompt_file, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+    # 保存显示名称
+    if display_name:
+        names = load_prompt_names()
+        names[name] = display_name
+        save_prompt_names(names)
+
+    return {"success": True}
+
+
+@app.delete("/api/prompts/{name}")
+async def delete_prompt(name: str):
+    """删除prompt模板"""
+    prompt_file = Path(PROMPTS_DIR) / f"{name}.txt"
+    if prompt_file.exists():
+        prompt_file.unlink()
+
+        # 同时删除名称
+        names = load_prompt_names()
+        if name in names:
+            del names[name]
+            save_prompt_names(names)
+
+        return {"success": True}
+    return JSONResponse({"success": False, "message": "文件不存在"}, status_code=404)
 
 
 @app.get("/api/config")

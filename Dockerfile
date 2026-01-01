@@ -26,7 +26,8 @@ RUN pip install --upgrade pip && \
 # 复制项目文件
 COPY app_fastapi.py .
 COPY paper_summarizer.py .
-COPY config/ ./config/
+COPY templates/ ./templates/
+COPY prompts/ ./prompts/
 
 # 创建必要目录
 RUN mkdir -p /app/data /app/summaries /app/temp

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF论文总结工具</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card h3 { margin-bottom: 15px; color: #34495e; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; color: #555; }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea { resize: vertical; min-height: 150px; }
+        .row { display: flex; gap: 20px; flex-wrap: wrap; }
+        .col { flex: 1; min-width: 300px; }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-primary:hover { background: #2980b9; }
+        .btn-primary:disabled { background: #95a5a6; cursor: not-allowed; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+        .status.show { display: block; }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.info { background: #cce5ff; color: #004085; }
+        .result {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .progress { display: none; margin-top: 10px; }
+        .progress.show { display: block; }
+        .progress-bar {
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #3498db;
+            transition: width 0.3s;
+        }
+        .file-list { margin: 10px 0; }
+        .file-item {
+            padding: 5px 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            margin: 5px 0;
+            display: inline-block;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: #27ae60;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .download-link:hover { background: #219a52; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📚 PDF论文总结工具</h1>
+
+        <div class="row">
+            <div class="col">
+                <div class="card">
+                    <h3>⚙️ API配置</h3>
+                    <div class="form-group">
+                        <label>API提供商</label>
+                        <select id="provider">
+                            <option value="OpenAI">OpenAI</option>
+                            <option value="Gemini" selected>Gemini</option>
+                            <option value="Claude">Claude</option>
+                            <option value="自定义">自定义</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API密钥</label>
+                        <input type="password" id="api_key" placeholder="输入API密钥">
+                    </div>
+                    <div class="form-group">
+                        <label>API基础URL</label>
+                        <input type="text" id="base_url" placeholder="例如: https://your-api-url/v1">
+                    </div>
+                    <div class="form-group">
+                        <label>模型名称</label>
+                        <input type="text" id="model" value="gemini-2.5-flash" placeholder="模型名称">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="save_config" checked> 自动保存配置
+                        </label>
+                    </div>
+                    <button class="btn btn-secondary" onclick="saveConfig()">💾 保存配置</button>
+                    <div id="config-status" class="status"></div>
+                </div>
+
+                <div class="card">
+                    <h3>📝 Prompt模板</h3>
+                    <div class="form-group">
+                        <label>选择预设模板</label>
+                        <select id="prompt_preset" onchange="applyPreset()">
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Prompt内容</label>
+                        <textarea id="prompt" placeholder="使用 {content} 作为论文内容占位符"></textarea>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn btn-secondary" onclick="saveCurrentPrompt()">💾 保存模板</button>
+                        <button class="btn btn-secondary" onclick="showNewPromptDialog()">➕ 新建模板</button>
+                        <button class="btn btn-secondary" onclick="deleteCurrentPrompt()">🗑️ 删除模板</button>
+                    </div>
+                    <div id="prompt-status" class="status"></div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="card">
+                    <h3>📂 上传PDF文件</h3>
+                    <div class="form-group">
+                        <input type="file" id="files" multiple accept=".pdf">
+                    </div>
+                    <div id="file-list" class="file-list"></div>
+                    <button class="btn btn-primary" id="submit-btn" onclick="processPapers()">🚀 开始总结</button>
+
+                    <div id="progress" class="progress">
+                        <p id="progress-text">处理中...</p>
+                        <div class="progress-bar">
+                            <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div id="status" class="status"></div>
+                </div>
+
+                <div class="card">
+                    <h3>📄 总结结果</h3>
+                    <div id="result" class="result">等待处理...</div>
+                    <div id="download-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 预设Prompt模板（从API加载）
+        let promptPresets = {};
+        let presetNames = {};
+        let defaultPreset = 'accounting';
+        let defaultPrompt = '';
+
+        // 加载预设prompts
+        async function loadPrompts() {
+            try {
+                const resp = await fetch('/api/prompts');
+                const data = await resp.json();
+                promptPresets = data.presets || {};
+                presetNames = data.names || {};
+                defaultPreset = data.default || 'accounting';
+                defaultPrompt = promptPresets[defaultPreset] || '';
+
+                // 动态生成下拉选项
+                const select = document.getElementById('prompt_preset');
+                select.innerHTML = '';
+
+                // 按名称排序添加预设选项
+                const sortedKeys = Object.keys(presetNames).sort((a, b) =>
+                    presetNames[a].localeCompare(presetNames[b])
+                );
+
+                for (const key of sortedKeys) {
+                    if (promptPresets[key]) {
+                        const option = document.createElement('option');
+                        option.value = key;
+                        option.textContent = presetNames[key];
+                        select.appendChild(option);
+                    }
+                }
+
+                // 添加自定义选项
+                const customOption = document.createElement('option');
+                customOption.value = 'custom';
+                customOption.textContent = '4. 自定义';
+                select.appendChild(customOption);
+
+            } catch (e) {
+                console.error('加载预设prompts失败', e);
+            }
+        }
+
+        // 加载配置
+        async function loadConfig() {
+            try {
+                // 先加载预设prompts
+                await loadPrompts();
+
+                const resp = await fetch('/api/config');
+                const config = await resp.json();
+                document.getElementById('provider').value = config.provider || 'Gemini';
+                document.getElementById('api_key').value = config.api_key || '';
+                document.getElementById('base_url').value = config.base_url || '';
+                document.getElementById('model').value = config.model || 'gemini-2.5-flash';
+
+                const savedPrompt = config.prompt || defaultPrompt;
+                document.getElementById('prompt').value = savedPrompt;
+
+                // 自动检测并设置预设选项
+                let matchedPreset = 'custom';
+                for (const [key, value] of Object.entries(promptPresets)) {
+                    if (savedPrompt.trim() === value.trim()) {
+                        matchedPreset = key;
+                        break;
+                    }
+                }
+                document.getElementById('prompt_preset').value = matchedPreset;
+            } catch (e) {
+                console.error('加载配置失败', e);
+            }
+        }
+
+        // 保存配置
+        async function saveConfig() {
+            const config = {
+                provider: document.getElementById('provider').value,
+                api_key: document.getElementById('api_key').value,
+                base_url: document.getElementById('base_url').value,
+                model: document.getElementById('model').value,
+                prompt: document.getElementById('prompt').value
+            };
+
+            try {
+                const resp = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(config)
+                });
+                showStatus('config-status', '✅ 配置已保存', 'success');
+            } catch (e) {
+                showStatus('config-status', '❌ 保存失败', 'error');
+            }
+        }
+
+        // 应用预设模板
+        function applyPreset() {
+            const preset = document.getElementById('prompt_preset').value;
+            if (preset !== 'custom') {
+                document.getElementById('prompt').value = promptPresets[preset];
+            }
+        }
+
+        // 重置prompt
+        function resetPrompt() {
+            document.getElementById('prompt_preset').value = defaultPreset;
+            document.getElementById('prompt').value = defaultPrompt;
+        }
+
+        // 显示状态
+        function showStatus(id, msg, type) {
+            const el = document.getElementById(id);
+            el.textContent = msg;
+            el.className = 'status show ' + type;
+            setTimeout(() => el.className = 'status', 3000);
+        }
+
+        // 保存当前prompt模板
+        async function saveCurrentPrompt() {
+            const preset = document.getElementById('prompt_preset').value;
+            const content = document.getElementById('prompt').value;
+
+            if (!content.trim()) {
+                showStatus('prompt-status', '❌ Prompt内容不能为空', 'error');
+                return;
+            }
+
+            if (!content.includes('{content}')) {
+                showStatus('prompt-status', '⚠️ 建议包含 {content} 占位符', 'info');
+            }
+
+            try {
+                const resp = await fetch(`/api/prompts/${preset}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        content: content,
+                        display_name: presetNames[preset] || preset
+                    })
+                });
+                if (resp.ok) {
+                    promptPresets[preset] = content;
+                    showStatus('prompt-status', '✅ 模板已保存', 'success');
+                } else {
+                    showStatus('prompt-status', '❌ 保存失败', 'error');
+                }
+            } catch (e) {
+                showStatus('prompt-status', '❌ 保存失败: ' + e.message, 'error');
+            }
+        }
+
+        // 显示新建模板对话框
+        function showNewPromptDialog() {
+            const name = prompt('请输入模板名称（英文，如 economics）：');
+            if (!name) return;
+
+            const displayName = prompt('请输入显示名称（如 "经济学论文"）：', name);
+            if (!displayName) return;
+
+            // 添加到列表
+            const select = document.getElementById('prompt_preset');
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = displayName;
+            select.insertBefore(option, select.lastElementChild);
+            select.value = name;
+
+            // 更新数据
+            promptPresets[name] = '';
+            presetNames[name] = displayName;
+
+            // 清空编辑区
+            document.getElementById('prompt').value = '';
+            showStatus('prompt-status', '✅ 新模板已创建，请编辑内容后保存', 'success');
+        }
+
+        // 删除当前模板
+        async function deleteCurrentPrompt() {
+            const preset = document.getElementById('prompt_preset').value;
+
+            if (!confirm(`确定要删除模板 "${presetNames[preset] || preset}" 吗？`)) {
+                return;
+            }
+
+            try {
+                const resp = await fetch(`/api/prompts/${preset}`, {
+                    method: 'DELETE'
+                });
+                if (resp.ok) {
+                    // 从列表中移除
+                    delete promptPresets[preset];
+                    delete presetNames[preset];
+
+                    // 重新加载
+                    await loadPrompts();
+                    applyPreset();
+                    showStatus('prompt-status', '✅ 模板已删除', 'success');
+                } else {
+                    showStatus('prompt-status', '❌ 删除失败', 'error');
+                }
+            } catch (e) {
+                showStatus('prompt-status', '❌ 删除失败: ' + e.message, 'error');
+            }
+        }
+
+        // 文件选择显示
+        document.getElementById('files').addEventListener('change', function() {
+            const list = document.getElementById('file-list');
+            list.innerHTML = '';
+            for (const file of this.files) {
+                const item = document.createElement('span');
+                item.className = 'file-item';
+                item.textContent = file.name;
+                list.appendChild(item);
+            }
+        });
+
+        // 处理论文
+        async function processPapers() {
+            const files = document.getElementById('files').files;
+            if (files.length === 0) {
+                showStatus('status', '❌ 请选择PDF文件', 'error');
+                return;
+            }
+
+            const apiKey = document.getElementById('api_key').value;
+            if (!apiKey) {
+                showStatus('status', '❌ 请输入API密钥', 'error');
+                return;
+            }
+
+            // 禁用按钮
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.textContent = '处理中...';
+
+            // 显示进度
+            document.getElementById('progress').className = 'progress show';
+            document.getElementById('result').textContent = '正在处理...';
+            document.getElementById('download-container').innerHTML = '';
+
+            // 保存配置
+            if (document.getElementById('save_config').checked) {
+                await saveConfig();
+            }
+
+            // 构建表单数据
+            const formData = new FormData();
+            for (const file of files) {
+                formData.append('files', file);
+            }
+            formData.append('provider', document.getElementById('provider').value);
+            formData.append('api_key', apiKey);
+            formData.append('base_url', document.getElementById('base_url').value);
+            formData.append('model', document.getElementById('model').value);
+            formData.append('prompt', document.getElementById('prompt').value);
+
+            try {
+                const resp = await fetch('/api/summarize', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await resp.json();
+
+                if (result.success) {
+                    document.getElementById('result').textContent = result.markdown;
+                    showStatus('status', result.message, 'success');
+
+                    if (result.file) {
+                        document.getElementById('download-container').innerHTML =
+                            `<a class="download-link" href="/download/${result.file}">📥 下载Markdown文件</a>`;
+                    }
+                } else {
+                    showStatus('status', '❌ ' + result.message, 'error');
+                    document.getElementById('result').textContent = '处理失败: ' + result.message;
+                }
+            } catch (e) {
+                showStatus('status', '❌ 请求失败: ' + e.message, 'error');
+                document.getElementById('result').textContent = '请求失败';
+            }
+
+            // 恢复按钮
+            btn.disabled = false;
+            btn.textContent = '🚀 开始总结';
+            document.getElementById('progress').className = 'progress';
+        }
+
+        // 页面加载时加载配置
+        loadConfig();
+    </script>
+</body>
+</html>
