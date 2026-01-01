@@ -1,15 +1,23 @@
 import os
 import json
 import shutil
+import asyncio
+import uuid
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, Request
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from paper_summarizer import PaperSummarizer
+
+# 批量处理时每个文件之间的延迟（秒）
+REQUEST_DELAY_SECONDS = 2.0
+
+# 存储处理任务的进度
+processing_tasks = {}
 
 app = FastAPI(title="PDF论文总结工具")
 
@@ -147,80 +155,99 @@ async def summarize(
     api_key: str = Form(...),
     base_url: str = Form(""),
     model: str = Form(...),
-    prompt: str = Form("")
+    prompt: str = Form(""),
+    rpm: int = Form(0)
 ):
-    """处理PDF并生成总结"""
-    try:
-        if not files:
-            return JSONResponse({"success": False, "message": "请上传PDF文件"})
+    """处理PDF并生成总结（带实时进度）"""
 
-        if not api_key:
-            return JSONResponse({"success": False, "message": "请输入API密钥"})
+    async def generate():
+        try:
+            if not files:
+                yield f"data: {json.dumps({'type': 'error', 'message': '请上传PDF文件'})}\n\n"
+                return
 
-        # 创建总结器
-        summarizer = PaperSummarizer(
-            api_key=api_key,
-            base_url=base_url if base_url else None,
-            model=model
-        )
+            if not api_key:
+                yield f"data: {json.dumps({'type': 'error', 'message': '请输入API密钥'})}\n\n"
+                return
 
-        summaries = []
-        temp_files = []
+            total = len(files)
+            yield f"data: {json.dumps({'type': 'start', 'total': total})}\n\n"
 
-        for file in files:
-            # 保存临时文件
-            temp_path = f"temp/{file.filename}"
-            with open(temp_path, "wb") as f:
-                content = await file.read()
-                f.write(content)
-            temp_files.append(temp_path)
+            # 创建总结器
+            summarizer = PaperSummarizer(
+                api_key=api_key,
+                base_url=base_url if base_url else None,
+                model=model,
+                rpm=rpm if rpm > 0 else None
+            )
 
-            try:
-                custom_prompt = prompt if prompt else None
-                summary_data = summarizer.summarize_paper(temp_path, custom_prompt)
-                summaries.append(summary_data)
-            except Exception as e:
-                summaries.append({
-                    "file_name": file.filename,
-                    "summary": f"❌ 处理失败: {str(e)}",
-                    "file_path": temp_path
-                })
+            summaries = []
+            temp_files = []
 
-        # 清理临时文件
-        for temp_file in temp_files:
-            try:
-                os.remove(temp_file)
-            except:
-                pass
+            for i, file in enumerate(files):
+                filename = file.filename
+                # 发送当前处理状态
+                yield f"data: {json.dumps({'type': 'progress', 'current': i + 1, 'total': total, 'filename': filename, 'status': 'processing'})}\n\n"
 
-        # 生成Markdown
-        md_content = "# 📚 论文总结合集\n\n"
-        md_content += f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        md_content += f"**论文数量**: {len(summaries)}\n\n"
-        md_content += "---\n\n"
+                # 保存临时文件
+                temp_path = f"temp/{filename}"
+                with open(temp_path, "wb") as f:
+                    content = await file.read()
+                    f.write(content)
+                temp_files.append(temp_path)
 
-        for i, summary_data in enumerate(summaries, 1):
-            md_content += f"## 📄 {i}. {summary_data['file_name']}\n\n"
-            md_content += f"{summary_data['summary']}\n\n"
+                try:
+                    custom_prompt = prompt if prompt else None
+                    summary_data = summarizer.summarize_paper(temp_path, custom_prompt)
+                    summaries.append(summary_data)
+                    # 发送成功状态
+                    yield f"data: {json.dumps({'type': 'progress', 'current': i + 1, 'total': total, 'filename': filename, 'status': 'success'})}\n\n"
+                except Exception as e:
+                    summaries.append({
+                        "file_name": filename,
+                        "summary": f"❌ 处理失败: {str(e)}",
+                        "file_path": temp_path
+                    })
+                    # 发送失败状态
+                    yield f"data: {json.dumps({'type': 'progress', 'current': i + 1, 'total': total, 'filename': filename, 'status': 'failed', 'error': str(e)[:100]})}\n\n"
+
+                # 在处理下一个文件之前添加延迟
+                if i < total - 1:
+                    await asyncio.sleep(REQUEST_DELAY_SECONDS)
+
+            # 清理临时文件
+            for temp_file in temp_files:
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
+
+            # 生成Markdown
+            md_content = "# 📚 论文总结合集\n\n"
+            md_content += f"**生成时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            md_content += f"**论文数量**: {len(summaries)}\n\n"
             md_content += "---\n\n"
 
-        # 保存文件
-        output_filename = f"summaries_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-        output_path = f"summaries/{output_filename}"
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(md_content)
+            for i, summary_data in enumerate(summaries, 1):
+                md_content += f"## 📄 {i}. {summary_data['file_name']}\n\n"
+                md_content += f"{summary_data['summary']}\n\n"
+                md_content += "---\n\n"
 
-        success_count = sum(1 for s in summaries if not s['summary'].startswith('❌'))
+            # 保存文件
+            output_filename = f"summaries_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+            output_path = f"summaries/{output_filename}"
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(md_content)
 
-        return JSONResponse({
-            "success": True,
-            "message": f"✅ 成功处理 {success_count}/{len(summaries)} 篇论文",
-            "markdown": md_content,
-            "file": output_filename
-        })
+            success_count = sum(1 for s in summaries if not s['summary'].startswith('❌'))
 
-    except Exception as e:
-        return JSONResponse({"success": False, "message": str(e)})
+            # 发送完成状态
+            yield f"data: {json.dumps({'type': 'complete', 'success': True, 'message': f'✅ 成功处理 {success_count}/{len(summaries)} 篇论文', 'markdown': md_content, 'file': output_filename})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/download/{filename}")

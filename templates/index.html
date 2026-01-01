@@ -69,15 +69,60 @@
         .progress { display: none; margin-top: 10px; }
         .progress.show { display: block; }
         .progress-bar {
-            height: 20px;
+            height: 24px;
             background: #e9ecef;
             border-radius: 4px;
             overflow: hidden;
+            position: relative;
         }
         .progress-fill {
             height: 100%;
-            background: #3498db;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
             transition: width 0.3s;
+        }
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+            text-shadow: 0 0 2px white;
+        }
+        .file-status {
+            margin-top: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 13px;
+        }
+        .file-status-item {
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .file-status-item.processing { background: #fff3cd; color: #856404; }
+        .file-status-item.success { background: #d4edda; color: #155724; }
+        .file-status-item.failed { background: #f8d7da; color: #721c24; }
+        .file-status-item .filename {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid #856404;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
         .file-list { margin: 10px 0; }
         .file-item {
@@ -129,6 +174,11 @@
                         <input type="text" id="model" value="gemini-2.5-flash" placeholder="模型名称">
                     </div>
                     <div class="form-group">
+                        <label>速率限制 (RPM)</label>
+                        <input type="number" id="rpm" value="0" min="0" placeholder="每分钟最大请求数，0表示不限制">
+                        <small style="color: #888;">设置后会自动控制请求间隔，避免触发API限制</small>
+                    </div>
+                    <div class="form-group">
                         <label>
                             <input type="checkbox" id="save_config" checked> 自动保存配置
                         </label>
@@ -167,10 +217,11 @@
                     <button class="btn btn-primary" id="submit-btn" onclick="processPapers()">🚀 开始总结</button>
 
                     <div id="progress" class="progress">
-                        <p id="progress-text">处理中...</p>
                         <div class="progress-bar">
                             <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                            <span id="progress-text" class="progress-text">0 / 0</span>
                         </div>
+                        <div id="file-status" class="file-status"></div>
                     </div>
 
                     <div id="status" class="status"></div>
@@ -231,6 +282,7 @@
                 document.getElementById('api_key').value = config.api_key || '';
                 document.getElementById('base_url').value = config.base_url || '';
                 document.getElementById('model').value = config.model || 'gemini-2.5-flash';
+                document.getElementById('rpm').value = config.rpm || 0;
 
                 const savedPrompt = config.prompt || defaultPrompt;
                 document.getElementById('prompt').value = savedPrompt;
@@ -256,6 +308,7 @@
                 api_key: document.getElementById('api_key').value,
                 base_url: document.getElementById('base_url').value,
                 model: document.getElementById('model').value,
+                rpm: parseInt(document.getElementById('rpm').value) || 0,
                 prompt: document.getElementById('prompt').value
             };
 
@@ -382,6 +435,36 @@
             }
         });
 
+        // 更新文件状态显示
+        function updateFileStatus(filename, status, error = null) {
+            const container = document.getElementById('file-status');
+            let item = document.getElementById(`status-${CSS.escape(filename)}`);
+
+            if (!item) {
+                item = document.createElement('div');
+                item.id = `status-${CSS.escape(filename)}`;
+                item.className = 'file-status-item';
+                container.appendChild(item);
+            }
+
+            item.className = `file-status-item ${status}`;
+
+            let icon = '';
+            if (status === 'processing') {
+                icon = '<div class="spinner"></div>';
+            } else if (status === 'success') {
+                icon = '✅';
+            } else if (status === 'failed') {
+                icon = '❌';
+            }
+
+            const errorText = error ? ` - ${error}` : '';
+            item.innerHTML = `${icon}<span class="filename" title="${filename}">${filename}${errorText}</span>`;
+
+            // 滚动到最新
+            container.scrollTop = container.scrollHeight;
+        }
+
         // 处理论文
         async function processPapers() {
             const files = document.getElementById('files').files;
@@ -403,6 +486,9 @@
 
             // 显示进度
             document.getElementById('progress').className = 'progress show';
+            document.getElementById('progress-fill').style.width = '0%';
+            document.getElementById('progress-text').textContent = '准备中...';
+            document.getElementById('file-status').innerHTML = '';
             document.getElementById('result').textContent = '正在处理...';
             document.getElementById('download-container').innerHTML = '';
 
@@ -421,6 +507,7 @@
             formData.append('base_url', document.getElementById('base_url').value);
             formData.append('model', document.getElementById('model').value);
             formData.append('prompt', document.getElementById('prompt').value);
+            formData.append('rpm', document.getElementById('rpm').value || 0);
 
             try {
                 const resp = await fetch('/api/summarize', {
@@ -428,19 +515,28 @@
                     body: formData
                 });
 
-                const result = await resp.json();
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-                if (result.success) {
-                    document.getElementById('result').textContent = result.markdown;
-                    showStatus('status', result.message, 'success');
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
 
-                    if (result.file) {
-                        document.getElementById('download-container').innerHTML =
-                            `<a class="download-link" href="/download/${result.file}">📥 下载Markdown文件</a>`;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // 保留未完成的部分
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                handleProgressEvent(data);
+                            } catch (e) {
+                                console.error('解析SSE数据失败', e);
+                            }
+                        }
                     }
-                } else {
-                    showStatus('status', '❌ ' + result.message, 'error');
-                    document.getElementById('result').textContent = '处理失败: ' + result.message;
                 }
             } catch (e) {
                 showStatus('status', '❌ 请求失败: ' + e.message, 'error');
@@ -450,7 +546,37 @@
             // 恢复按钮
             btn.disabled = false;
             btn.textContent = '🚀 开始总结';
-            document.getElementById('progress').className = 'progress';
+        }
+
+        // 处理进度事件
+        function handleProgressEvent(data) {
+            switch (data.type) {
+                case 'start':
+                    document.getElementById('progress-text').textContent = `0 / ${data.total}`;
+                    break;
+
+                case 'progress':
+                    const percent = (data.current / data.total) * 100;
+                    document.getElementById('progress-fill').style.width = `${percent}%`;
+                    document.getElementById('progress-text').textContent = `${data.current} / ${data.total}`;
+                    updateFileStatus(data.filename, data.status, data.error);
+                    break;
+
+                case 'complete':
+                    document.getElementById('progress-fill').style.width = '100%';
+                    document.getElementById('result').textContent = data.markdown;
+                    showStatus('status', data.message, 'success');
+                    if (data.file) {
+                        document.getElementById('download-container').innerHTML =
+                            `<a class="download-link" href="/download/${data.file}">📥 下载Markdown文件</a>`;
+                    }
+                    break;
+
+                case 'error':
+                    showStatus('status', '❌ ' + data.message, 'error');
+                    document.getElementById('result').textContent = '处理失败: ' + data.message;
+                    break;
+            }
         }
 
         // 页面加载时加载配置

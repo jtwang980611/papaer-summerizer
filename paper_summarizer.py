@@ -1,6 +1,8 @@
 import os
 import json
 import base64
+import time
+import random
 from pathlib import Path
 from typing import List, Dict
 import PyPDF2
@@ -8,10 +10,83 @@ from openai import OpenAI
 import requests
 
 
+def retry_with_exponential_backoff(
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 60.0,
+    exponential_base: float = 2.0,
+    jitter: bool = True,
+    retryable_exceptions: tuple = (Exception,),
+    retryable_status_codes: tuple = (429, 500, 502, 503, 504),
+):
+    """
+    指数退避重试装饰器
+
+    Args:
+        max_retries: 最大重试次数
+        base_delay: 初始延迟（秒）
+        max_delay: 最大延迟（秒）
+        exponential_base: 指数基数
+        jitter: 是否添加随机抖动
+        retryable_exceptions: 可重试的异常类型
+        retryable_status_codes: 可重试的HTTP状态码
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            num_retries = 0
+            delay = base_delay
+
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_msg = str(e).lower()
+
+                    # 检查是否为速率限制错误
+                    is_rate_limit = (
+                        'rate limit' in error_msg or
+                        'rate_limit' in error_msg or
+                        '429' in error_msg or
+                        'too many requests' in error_msg or
+                        'quota' in error_msg
+                    )
+
+                    # 检查是否为可重试的服务器错误
+                    is_server_error = any(str(code) in error_msg for code in retryable_status_codes)
+
+                    # 检查是否为超时错误
+                    is_timeout = 'timeout' in error_msg or 'timed out' in error_msg
+
+                    should_retry = is_rate_limit or is_server_error or is_timeout
+
+                    if not should_retry or num_retries >= max_retries:
+                        raise
+
+                    num_retries += 1
+
+                    # 计算延迟时间
+                    delay = min(delay * exponential_base, max_delay)
+
+                    # 添加随机抖动，避免多个请求同时重试
+                    if jitter:
+                        delay = delay * (0.5 + random.random())
+
+                    # 速率限制错误使用更长的延迟
+                    if is_rate_limit:
+                        delay = max(delay, 10.0)  # 至少等待10秒
+
+                    print(f"⚠️ 请求失败，{delay:.1f}秒后进行第 {num_retries}/{max_retries} 次重试...")
+                    print(f"   错误信息: {str(e)[:100]}")
+                    time.sleep(delay)
+
+        return wrapper
+    return decorator
+
+
 class PaperSummarizer:
     """论文总结器 - 使用OpenAI API总结PDF论文"""
 
-    def __init__(self, api_key: str, base_url: str = None, model: str = "gpt-3.5-turbo"):
+    def __init__(self, api_key: str, base_url: str = None, model: str = "gpt-3.5-turbo", rpm: int = None):
         """
         初始化论文总结器
 
@@ -19,10 +94,13 @@ class PaperSummarizer:
             api_key: OpenAI API密钥
             base_url: API基础URL（支持兼容OpenAI格式的API）
             model: 使用的模型名称
+            rpm: 每分钟最大请求数（Rate Per Minute），用于速率限制
         """
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
+        self.rpm = rpm
+        self.last_request_time = 0  # 上次请求时间戳
 
         # 检测是否使用Gemini模型
         self.is_gemini = self._is_gemini_model(model)
@@ -40,6 +118,21 @@ class PaperSummarizer:
     def _is_gemini_model(self, model: str) -> bool:
         """检测是否为Gemini模型"""
         return model.lower().startswith('gemini')
+
+    def _wait_for_rate_limit(self):
+        """根据RPM设置等待，确保不超过速率限制"""
+        if not self.rpm or self.rpm <= 0:
+            return
+
+        min_interval = 60.0 / self.rpm  # 每次请求的最小间隔（秒）
+        elapsed = time.time() - self.last_request_time
+
+        if elapsed < min_interval:
+            wait_time = min_interval - elapsed
+            print(f"⏳ 速率限制: 等待 {wait_time:.1f} 秒 (RPM={self.rpm})")
+            time.sleep(wait_time)
+
+        self.last_request_time = time.time()
 
     @property
     def default_prompt(self):
@@ -111,6 +204,7 @@ class PaperSummarizer:
         except Exception as e:
             raise Exception(f"PDF文本提取失败: {str(e)}")
 
+    @retry_with_exponential_backoff(max_retries=3, base_delay=2.0)
     def summarize_text(self, text: str, custom_prompt: str = None) -> str:
         """
         使用OpenAI API总结文本
@@ -123,6 +217,9 @@ class PaperSummarizer:
             总结后的文本
         """
         try:
+            # 速率限制等待
+            self._wait_for_rate_limit()
+
             # 使用自定义prompt或默认prompt
             prompt_template = custom_prompt if custom_prompt else self.default_prompt
             prompt = prompt_template.format(content=text[:16000])  # 增加输入长度限制
@@ -192,6 +289,7 @@ class PaperSummarizer:
             "file_path": pdf_path
         }
 
+    @retry_with_exponential_backoff(max_retries=3, base_delay=2.0)
     def summarize_pdf_with_gemini_native(self, pdf_path: str, custom_prompt: str = None) -> str:
         """
         使用Gemini原生格式（通过new-api）直接读取并总结PDF
@@ -204,6 +302,9 @@ class PaperSummarizer:
             总结后的文本
         """
         try:
+            # 速率限制等待
+            self._wait_for_rate_limit()
+
             print(f"📄 使用Gemini原生格式直接读取PDF文件...")
 
             # 读取PDF文件并进行base64编码
@@ -294,13 +395,14 @@ class PaperSummarizer:
             print(f"❌ Gemini API调用错误详情: {str(e)}")
             raise Exception(f"Gemini API调用失败: {str(e)}")
 
-    def summarize_papers_in_folder(self, folder_path: str, custom_prompt: str = None) -> List[Dict]:
+    def summarize_papers_in_folder(self, folder_path: str, custom_prompt: str = None, delay_between_requests: float = 2.0) -> List[Dict]:
         """
         总结文件夹中的所有PDF论文
 
         Args:
             folder_path: 包含PDF文件的文件夹路径
             custom_prompt: 自定义prompt
+            delay_between_requests: 每次请求之间的延迟（秒），用于避免触发速率限制
 
         Returns:
             所有论文总结的列表
@@ -313,7 +415,7 @@ class PaperSummarizer:
 
         print(f"找到 {len(pdf_files)} 个PDF文件")
 
-        for pdf_file in pdf_files:
+        for i, pdf_file in enumerate(pdf_files):
             try:
                 summary_data = self.summarize_paper(str(pdf_file), custom_prompt)
                 summaries.append(summary_data)
@@ -324,6 +426,11 @@ class PaperSummarizer:
                     "summary": f"处理失败: {str(e)}",
                     "file_path": str(pdf_file)
                 })
+
+            # 在处理下一个文件之前添加延迟，避免触发速率限制
+            if i < len(pdf_files) - 1:
+                print(f"⏳ 等待 {delay_between_requests} 秒后处理下一个文件...")
+                time.sleep(delay_between_requests)
 
         return summaries
 
