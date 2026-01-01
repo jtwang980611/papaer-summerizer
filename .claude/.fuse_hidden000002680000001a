@@ -14,9 +14,7 @@
       "Bash(git remote:*)",
       "Bash(git push:*)",
       "Bash(docker buildx build:*)",
-      "Bash(python3:*)",
-      "Bash(mkdir:*)",
-      "Bash(git reset:*)"
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []
