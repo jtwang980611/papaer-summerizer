@@ -116,11 +116,11 @@ async def get_prompts():
 
     # 为每个预设生成显示名称
     preset_names = {}
-    for i, key in enumerate(sorted(presets.keys()), 1):
+    for key in sorted(presets.keys()):
         if key in saved_names:
             preset_names[key] = saved_names[key]
         else:
-            preset_names[key] = f"{i}. {key}"
+            preset_names[key] = key  # 使用文件名作为默认名称
 
     # 确定默认预设
     default_key = list(presets.keys())[0] if presets else None
