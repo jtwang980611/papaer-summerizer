@@ -4,12 +4,13 @@ PyPDF2>=3.0.0
 # API客户端
 openai>=1.0.0
 
-# Web界面
-gradio>=4.0.0
+# Web界面 (FastAPI - 轻量级)
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
 
-# HTTP请求（用于健康检查）
+# HTTP请求
 requests>=2.31.0
 
 # 其他依赖
 python-dotenv>=1.0.0
-pathlib>=1.0.1

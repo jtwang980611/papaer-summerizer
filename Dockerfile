@@ -13,6 +13,7 @@ ENV PYTHONUNBUFFERED=1 \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
@@ -23,19 +24,19 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # 复制项目文件
-COPY app.py .
+COPY app_fastapi.py .
 COPY paper_summarizer.py .
 COPY config/ ./config/
 
-# 创建配置目录（如果不存在）
-RUN mkdir -p /app/data
+# 创建必要目录
+RUN mkdir -p /app/data /app/summaries /app/temp
 
 # 暴露端口
 EXPOSE 7860
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:7860')" || exit 1
+# 健康检查 - 使用 curl 替代 Python 以减少内存开销
+HEALTHCHECK --interval=120s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:7860/ || exit 1
 
-# 启动应用
-CMD ["python", "app.py"]
+# 启动应用 (使用FastAPI轻量版本)
+CMD ["python", "app_fastapi.py"]
