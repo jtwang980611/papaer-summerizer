@@ -142,9 +142,119 @@
             border-radius: 4px;
         }
         .download-link:hover { background: #219a52; }
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafafa;
+        }
+        .checkbox-text {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        .checkbox-hint {
+            font-size: 12px;
+            color: #777;
+        }
+        .checkbox-state {
+            display: inline-block;
+            margin-top: 4px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .checkbox-state.on { background: #e8f4ff; color: #1f6fb2; }
+        .checkbox-state.off { background: #f0f0f0; color: #666; }
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex: 0 0 auto;
+        }
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+            position: absolute;
+        }
+        .toggle-track {
+            position: absolute;
+            inset: 0;
+            background: #cfcfcf;
+            border-radius: 999px;
+            transition: background 0.2s;
+        }
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            background: #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .toggle input:checked + .toggle-track {
+            background: #3498db;
+        }
+        .toggle input:checked + .toggle-track .toggle-thumb {
+            transform: translateX(20px);
+        }
+        .drop-zone {
+            border: 2px dashed #c7c7c7;
+            background: #fafafa;
+            border-radius: 6px;
+            padding: 22px;
+            text-align: center;
+            position: relative;
+            transition: border-color 0.2s, background 0.2s;
+            min-height: 90px;
+        }
+        .drop-zone.dragover {
+            border-color: #3498db;
+            background: #ecf6ff;
+        }
+        .drop-zone-text {
+            color: #666;
+            font-size: 14px;
+        }
+        .file-input {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .drop-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(52, 152, 219, 0.12);
+            border: 3px dashed #3498db;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            pointer-events: none;
+        }
+        .drop-overlay.show { display: flex; }
+        .drop-overlay-text {
+            background: #ffffff;
+            color: #2c3e50;
+            padding: 12px 18px;
+            border-radius: 6px;
+            font-weight: 600;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        }
     </style>
 </head>
 <body>
+    <div id="drop-overlay" class="drop-overlay">
+        <div class="drop-overlay-text">松手即可上传PDF</div>
+    </div>
     <div class="container">
         <h1>📚 PDF论文总结工具</h1>
 
@@ -179,9 +289,19 @@
                         <small style="color: #888;">设置后会自动控制请求间隔，避免触发API限制</small>
                     </div>
                     <div class="form-group">
-                        <label>
-                            <input type="checkbox" id="save_config" checked> 自动保存配置
-                        </label>
+                        <div class="checkbox-row">
+                            <label class="toggle" for="save_config">
+                                <input type="checkbox" id="save_config" checked>
+                                <span class="toggle-track">
+                                    <span class="toggle-thumb"></span>
+                                </span>
+                            </label>
+                            <label for="save_config">
+                                <div class="checkbox-text">自动保存配置</div>
+                                <div class="checkbox-hint">开启后每次开始总结都会保存当前配置</div>
+                                <div id="save-config-state" class="checkbox-state"></div>
+                            </label>
+                        </div>
                     </div>
                     <button class="btn btn-secondary" onclick="saveConfig()">💾 保存配置</button>
                     <div id="config-status" class="status"></div>
@@ -211,7 +331,10 @@
                 <div class="card">
                     <h3>📂 上传PDF文件</h3>
                     <div class="form-group">
-                        <input type="file" id="files" multiple accept=".pdf">
+                        <div id="drop-zone" class="drop-zone">
+                            <input type="file" id="files" class="file-input" multiple accept=".pdf">
+                            <div class="drop-zone-text">拖拽PDF到这里，或点击选择文件</div>
+                        </div>
                     </div>
                     <div id="file-list" class="file-list"></div>
                     <button class="btn btn-primary" id="submit-btn" onclick="processPapers()">🚀 开始总结</button>
@@ -241,6 +364,8 @@
         let promptPresets = {};
         let defaultPreset = '';
         let defaultPrompt = '';
+        let selectedFiles = [];
+        let dragDepth = 0;
 
         // 加载预设prompts
         async function loadPrompts() {
@@ -346,6 +471,19 @@
             setTimeout(() => el.className = 'status', 3000);
         }
 
+        function updateSaveConfigState() {
+            const checkbox = document.getElementById('save_config');
+            const stateEl = document.getElementById('save-config-state');
+            if (!checkbox || !stateEl) return;
+            if (checkbox.checked) {
+                stateEl.textContent = '已开启';
+                stateEl.className = 'checkbox-state on';
+            } else {
+                stateEl.textContent = '已关闭';
+                stateEl.className = 'checkbox-state off';
+            }
+        }
+
         // 保存当前prompt模板
         async function saveCurrentPrompt() {
             const preset = document.getElementById('prompt_preset').value;
@@ -423,17 +561,132 @@
             }
         }
 
-        // 文件选择显示
-        document.getElementById('files').addEventListener('change', function() {
+        function isPdfFile(file) {
+            if (!file) return false;
+            const name = (file.name || '').toLowerCase();
+            return file.type === 'application/pdf' || name.endsWith('.pdf');
+        }
+
+        function renderFileList() {
             const list = document.getElementById('file-list');
             list.innerHTML = '';
-            for (const file of this.files) {
+            for (const file of selectedFiles) {
                 const item = document.createElement('span');
                 item.className = 'file-item';
                 item.textContent = file.name;
                 list.appendChild(item);
             }
+        }
+
+        function setSelectedFiles(files) {
+            selectedFiles = Array.from(files || []);
+            renderFileList();
+            const input = document.getElementById('files');
+            if (selectedFiles.length === 0) {
+                input.value = '';
+                return;
+            }
+            const dt = new DataTransfer();
+            for (const file of selectedFiles) {
+                dt.items.add(file);
+            }
+            input.files = dt.files;
+        }
+
+        function addSelectedFiles(files) {
+            const incoming = Array.from(files || []);
+            if (incoming.length === 0) return;
+            const existingKeys = new Set(
+                selectedFiles.map(f => `${f.name}|${f.size}|${f.lastModified}`)
+            );
+            for (const file of incoming) {
+                const key = `${file.name}|${file.size}|${file.lastModified}`;
+                if (!existingKeys.has(key)) {
+                    selectedFiles.push(file);
+                    existingKeys.add(key);
+                }
+            }
+            renderFileList();
+            const input = document.getElementById('files');
+            const dt = new DataTransfer();
+            for (const file of selectedFiles) {
+                dt.items.add(file);
+            }
+            input.files = dt.files;
+        }
+
+        function handleDroppedFiles(fileList) {
+            const incoming = Array.from(fileList || []);
+            const pdfs = incoming.filter(isPdfFile);
+            if (pdfs.length === 0) {
+                showStatus('status', '❌ 只能上传PDF文件', 'error');
+                return;
+            }
+            if (pdfs.length < incoming.length) {
+                showStatus('status', '⚠️ 已忽略非PDF文件', 'info');
+            }
+            addSelectedFiles(pdfs);
+            processPapers();
+        }
+
+        // 文件选择显示
+        document.getElementById('files').addEventListener('change', function() {
+            const files = Array.from(this.files || []).filter(isPdfFile);
+            if (files.length === 0 && this.files.length > 0) {
+                showStatus('status', '❌ 只能上传PDF文件', 'error');
+            } else if (files.length < this.files.length) {
+                showStatus('status', '⚠️ 已忽略非PDF文件', 'info');
+            }
+            setSelectedFiles(files);
         });
+
+        // 拖拽上传
+        const dropZone = document.getElementById('drop-zone');
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', function(e) {
+            if (e.relatedTarget && dropZone.contains(e.relatedTarget)) return;
+            dropZone.classList.remove('dragover');
+        });
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('dragover');
+            handleDroppedFiles(e.dataTransfer.files);
+        });
+
+        // 拖到页面任意位置也可上传
+        document.addEventListener('dragover', function(e) {
+            e.preventDefault();
+        });
+        document.addEventListener('dragenter', function(e) {
+            if (!e.dataTransfer || !e.dataTransfer.types || !e.dataTransfer.types.includes('Files')) {
+                return;
+            }
+            dragDepth += 1;
+            document.getElementById('drop-overlay').classList.add('show');
+        });
+        document.addEventListener('dragleave', function(e) {
+            if (!e.dataTransfer || !e.dataTransfer.types || !e.dataTransfer.types.includes('Files')) {
+                return;
+            }
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (dragDepth === 0) {
+                document.getElementById('drop-overlay').classList.remove('show');
+            }
+        });
+        document.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dragDepth = 0;
+            document.getElementById('drop-overlay').classList.remove('show');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleDroppedFiles(e.dataTransfer.files);
+            }
+        });
+
+        document.getElementById('save_config').addEventListener('change', updateSaveConfigState);
 
         // 更新文件状态显示
         function updateFileStatus(filename, status, error = null) {
@@ -467,7 +720,7 @@
 
         // 处理论文
         async function processPapers() {
-            const files = document.getElementById('files').files;
+            const files = selectedFiles.length ? selectedFiles : document.getElementById('files').files;
             if (files.length === 0) {
                 showStatus('status', '❌ 请选择PDF文件', 'error');
                 return;
@@ -580,7 +833,7 @@
         }
 
         // 页面加载时加载配置
-        loadConfig();
+        loadConfig().then(updateSaveConfigState).catch(updateSaveConfigState);
     </script>
 </body>
 </html>
