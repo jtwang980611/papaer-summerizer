@@ -839,7 +839,7 @@
             // 显示进度
             document.getElementById('progress').className = 'progress show';
             document.getElementById('progress-fill').style.width = '0%';
-            document.getElementById('progress-text').textContent = '准备中...';
+            document.getElementById('progress-text').textContent = `0 / ${files.length}`;
             document.getElementById('file-status').innerHTML = '';
             document.getElementById('result').textContent = '正在处理...';
             document.getElementById('download-container').innerHTML = '';
@@ -866,6 +866,17 @@
                     method: 'POST',
                     body: formData
                 });
+                if (!resp.ok) {
+                    const errText = await resp.text();
+                    showStatus('status', '❌ 请求失败: ' + errText, 'error');
+                    document.getElementById('result').textContent = '请求失败';
+                    return;
+                }
+                if (!resp.body) {
+                    showStatus('status', '❌ 请求失败: 无响应数据流', 'error');
+                    document.getElementById('result').textContent = '请求失败';
+                    return;
+                }
 
                 const reader = resp.body.getReader();
                 const decoder = new TextDecoder();
