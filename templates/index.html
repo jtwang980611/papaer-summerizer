@@ -746,6 +746,8 @@
         dropZone.addEventListener('drop', function(e) {
             e.preventDefault();
             e.stopPropagation();
+            dragDepth = 0;
+            document.getElementById('drop-overlay').classList.remove('show');
             dropZone.classList.remove('dragover');
             handleDroppedFiles(e.dataTransfer.files);
         });
@@ -777,6 +779,10 @@
             if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                 handleDroppedFiles(e.dataTransfer.files);
             }
+        });
+        document.addEventListener('dragend', function() {
+            dragDepth = 0;
+            document.getElementById('drop-overlay').classList.remove('show');
         });
 
         document.getElementById('save_config').addEventListener('change', updateSaveConfigState);
