@@ -155,8 +155,29 @@
             background: #e9ecef;
             border-radius: 4px;
             margin: 5px 0;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 100%;
         }
+        .file-item-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .file-item-remove {
+            border: none;
+            background: #d9dde2;
+            color: #555;
+            width: 18px;
+            height: 18px;
+            line-height: 18px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+        }
+        .file-item-remove:hover { background: #c8cdd3; }
         .download-link {
             display: inline-block;
             margin-top: 10px;
@@ -362,6 +383,7 @@
                         </div>
                     </div>
                     <div id="file-list" class="file-list"></div>
+                    <button class="btn btn-secondary" type="button" onclick="clearSelectedFiles()">🧹 清空全部</button>
                     <button class="btn btn-primary" id="submit-btn" onclick="processPapers()">🚀 开始总结</button>
 
                     <div id="progress" class="progress">
@@ -611,12 +633,24 @@
         function renderFileList() {
             const list = document.getElementById('file-list');
             list.innerHTML = '';
-            for (const file of selectedFiles) {
+            selectedFiles.forEach((file, index) => {
                 const item = document.createElement('span');
                 item.className = 'file-item';
-                item.textContent = file.name;
+                const name = document.createElement('span');
+                name.className = 'file-item-name';
+                name.textContent = file.name;
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'file-item-remove';
+                remove.textContent = '×';
+                remove.setAttribute('aria-label', `移除 ${file.name}`);
+                remove.addEventListener('click', function() {
+                    removeSelectedFile(index);
+                });
+                item.appendChild(name);
+                item.appendChild(remove);
                 list.appendChild(item);
-            }
+            });
         }
 
         function setSelectedFiles(files) {
@@ -632,6 +666,25 @@
                 dt.items.add(file);
             }
             input.files = dt.files;
+        }
+
+        function removeSelectedFile(index) {
+            if (index < 0 || index >= selectedFiles.length) return;
+            selectedFiles.splice(index, 1);
+            renderFileList();
+            const input = document.getElementById('files');
+            const dt = new DataTransfer();
+            for (const file of selectedFiles) {
+                dt.items.add(file);
+            }
+            input.files = dt.files;
+        }
+
+        function clearSelectedFiles() {
+            selectedFiles = [];
+            renderFileList();
+            const input = document.getElementById('files');
+            input.value = '';
         }
 
         function addSelectedFiles(files) {
@@ -667,7 +720,6 @@
                 showStatus('status', '⚠️ 已忽略非PDF文件', 'info');
             }
             addSelectedFiles(pdfs);
-            processPapers();
         }
 
         // 文件选择显示
