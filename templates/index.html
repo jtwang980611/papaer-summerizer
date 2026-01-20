@@ -61,10 +61,35 @@
             background: #f8f9fa;
             padding: 20px;
             border-radius: 4px;
-            white-space: pre-wrap;
-            font-family: monospace;
             max-height: 600px;
             overflow-y: auto;
+            line-height: 1.6;
+        }
+        .result pre, .result code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background: #f1f3f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        .result pre {
+            padding: 12px;
+            overflow-x: auto;
+        }
+        .result table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        .result th, .result td {
+            border: 1px solid #e1e1e1;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        .result blockquote {
+            border-left: 4px solid #d0d7de;
+            padding-left: 10px;
+            color: #57606a;
+            margin: 8px 0;
         }
         .progress { display: none; margin-top: 10px; }
         .progress.show { display: block; }
@@ -359,6 +384,8 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script>
         // 预设Prompt模板（从API加载）
         let promptPresets = {};
@@ -469,6 +496,20 @@
             el.textContent = msg;
             el.className = 'status show ' + type;
             setTimeout(() => el.className = 'status', 3000);
+        }
+
+        function renderMarkdown(content) {
+            const container = document.getElementById('result');
+            if (!content) {
+                container.textContent = '';
+                return;
+            }
+            if (window.marked && window.DOMPurify) {
+                const html = marked.parse(content);
+                container.innerHTML = DOMPurify.sanitize(html);
+            } else {
+                container.textContent = content;
+            }
         }
 
         function updateSaveConfigState() {
@@ -817,7 +858,7 @@
 
                 case 'complete':
                     document.getElementById('progress-fill').style.width = '100%';
-                    document.getElementById('result').textContent = data.markdown;
+                    renderMarkdown(data.markdown);
                     showStatus('status', data.message, 'success');
                     if (data.file) {
                         document.getElementById('download-container').innerHTML =
